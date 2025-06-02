@@ -30,19 +30,18 @@ if ('webkitSpeechRecognition' in window) {
     transcriptEl.textContent = transcript;
   };
 
-  // 無音などのエラーにも耐えるように再起動
   recognition.onerror = (e) => {
     console.error("音声認識エラー:", e);
-    if (e.error === "no-speech" || e.error === "audio-capture" || e.error === "not-allowed") {
+    if (e.error === "aborted") return;  // ★修正ポイント: abortは無視
+    if (["no-speech", "audio-capture", "not-allowed"].includes(e.error)) {
       recognition.stop();
       setTimeout(() => recognition.start(), 500);
     }
   };
 
-  // 終わったらすぐ再開（自然停止対策）
   recognition.onend = () => {
-    console.log("認識終了 → 自動再開");
-    recognition.start();
+    console.log("認識終了"); // ★修正ポイント: 自動再開は削除（競合防止）
+    // recognition.start(); ← ここ削除
   };
 
   recognition.start();
@@ -66,9 +65,7 @@ document.addEventListener("keydown", async (event) => {
   if (pair[0] === "フォロー" && pair[1] === "次の話題") {
     if (key === 'a') {
       promptToSend = "店員の話した内容をフォローして";
-      // ステップ進めない（何度でもフォローできる）
     } else {
-      // bキー（次の話題）だけステップを進める
       ws.send(JSON.stringify({ action: "next", key }));
       currentStep++;
       statusEl.textContent = "次の話題へ";
@@ -84,6 +81,10 @@ document.addEventListener("keydown", async (event) => {
   statusEl.textContent = "送信中...";
 
   try {
+    // 音声認識を一時停止（明示的に止めてから読み上げ）
+    console.log("🎤 音声認識：停止中（読み上げのため）");
+    recognition.abort(); // ★修正ポイント: stop() → abort()（onendイベント抑止）
+
     const res = await fetch('/gpt', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -93,9 +94,6 @@ document.addEventListener("keydown", async (event) => {
     const data = await res.json();
     const reply = data.reply;
 
-    // 音声認識を一時停止
-    recognition.stop();
-
     // 読み上げ
     const utter = new SpeechSynthesisUtterance(reply);
     utter.lang = 'ja-JP';
@@ -104,18 +102,25 @@ document.addEventListener("keydown", async (event) => {
     utter.volume = 1.0;
 
     utter.onend = () => {
-      statusEl.textContent = "待機中";
-      recognition.start(); // 読み上げ後に再開
+      console.log("🗣️ 読み上げ終了 → 100ms後に音声認識再開");
+      setTimeout(() => {
+        try {
+          recognition.start();  //再開はここだけ
+          statusEl.textContent = "待機中";
+        } catch (err) {
+          console.warn("⚠️ 認識スタート失敗:", err);
+        }
+      }, 100);  //0.1秒待ってから再開
     };
 
     utter.onerror = () => {
+      console.error("読み上げエラー");
+      setTimeout(() => recognition.start(), 100);
       statusEl.textContent = "エラー（読み上げ失敗）";
-      recognition.start(); // 念のため再開
     };
 
     speechSynthesis.speak(utter);
 
-    // ステップ更新と通知（※修正ポイント）
     if (!(pair[0] === "フォロー" && pair[1] === "次の話題" && key === 'a')) {
       currentStep++;
       ws.send(JSON.stringify({ action: "next", key }));

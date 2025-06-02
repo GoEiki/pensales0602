@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>音声認識と入力</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 2em;
+      background: #f9f9f9;
+    }
+    h1 { margin-bottom: 1em; }
+    #transcript {
+      background: #fff;
+      border: 1px solid #ccc;
+      padding: 1em;
+      min-height: 3em;
+      margin-bottom: 1em;
+    }
+    #status {
+      color: green;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <h1>発話を認識しています...</h1>
+  <div id="transcript">(ここに音声認識結果が表示されます)</div>
+  <div id="status">待機中</div>
+
+  <script src="script.js"></script>
+</body>
+</html>

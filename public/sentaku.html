@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>選択肢表示</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #f0f0f0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+    }
+    h1 {
+      margin-bottom: 20px;
+    }
+    .options {
+      display: flex;
+      gap: 50px;
+    }
+    .option-box {
+      width: 200px;
+      padding: 30px;
+      background-color: white;
+      border: 2px solid #888;
+      border-radius: 12px;
+      text-align: center;
+      font-size: 1.5rem;
+      box-shadow: 2px 4px 8px rgba(0, 0, 0, 0.1);
+    }
+    #step-counter {
+      margin-top: 20px;
+      font-size: 1rem;
+      color: #555;
+    }
+  </style>
+</head>
+<body>
+  <h1>選択肢</h1>
+  <div class="options">
+    <div id="left-option" class="option-box">---</div>
+    <div id="right-option" class="option-box">---</div>
+  </div>
+  <div id="step-counter">ステップ: 0</div>
+
+  <script>
+    const options = [
+      ["インクの色", "ペンの芯"],
+      ["フォロー", "次の話題"],
+      ["頑丈さ", "コスト"],
+      ["フォロー", "次の話題"],
+      ["デザイン", "持ちやすさ"],
+      ["フォロー", "次の話題"]
+      
+    ];
+
+    const left = document.getElementById("left-option");
+    const right = document.getElementById("right-option");
+    const stepCounter = document.getElementById("step-counter");
+
+    const ws = new WebSocket(`ws://${location.hostname}:3001`);
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (typeof data.step === "number") {
+        const step = data.step;
+        const pair = options[step] || ["---", "---"];
+        left.textContent = pair[0];
+        right.textContent = pair[1];
+        stepCounter.textContent = `ステップ: ${step}`;
+      }
+    };
+
+    ws.onopen = () => console.log("✅ 選択肢表示画面 WebSocket接続済み");
+  </script>
+</body>
+</html>

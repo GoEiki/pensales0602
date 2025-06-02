@@ -32,16 +32,15 @@ if ('webkitSpeechRecognition' in window) {
 
   recognition.onerror = (e) => {
     console.error("音声認識エラー:", e);
-    if (e.error === "aborted") return;  // ★修正ポイント: abortは無視
-    if (["no-speech", "audio-capture", "not-allowed"].includes(e.error)) {
+    if (e.error === "no-speech" || e.error === "audio-capture" || e.error === "not-allowed") {
       recognition.stop();
       setTimeout(() => recognition.start(), 500);
     }
   };
 
   recognition.onend = () => {
-    console.log("認識終了"); // ★修正ポイント: 自動再開は削除（競合防止）
-    // recognition.start(); ← ここ削除
+    console.log("認識終了 → 自動再開");
+    setTimeout(() => recognition.start(), 100); // 再開を少し遅延
   };
 
   recognition.start();
@@ -55,16 +54,28 @@ ws.onopen = () => console.log("WebSocket connected");
 
 // キー入力処理
 document.addEventListener("keydown", async (event) => {
-  if (event.key !== 'a' && event.key !== 'b') return;
-  if (!transcript) return;
-
   const key = event.key;
+  if (key !== 'a' && key !== 'b') return;
+
   const pair = prompts[currentStep];
+  if (!pair) {
+    console.warn("これ以上進めません。");
+    return;
+  }
+
+  const isFollowPhase = pair[0] === "フォロー" && pair[1] === "次の話題";
+
+  if (!isFollowPhase && !transcript) {
+    console.log("音声認識の入力がまだありません。");
+    return;
+  }
+
   let promptToSend = null;
 
-  if (pair[0] === "フォロー" && pair[1] === "次の話題") {
+  if (isFollowPhase) {
     if (key === 'a') {
       promptToSend = "店員の話した内容をフォローして";
+      // フォローは何回でもOK、ステップ進めない
     } else {
       ws.send(JSON.stringify({ action: "next", key }));
       currentStep++;
@@ -81,10 +92,7 @@ document.addEventListener("keydown", async (event) => {
   statusEl.textContent = "送信中...";
 
   try {
-    // 音声認識を一時停止（明示的に止めてから読み上げ）
-    console.log("🎤 音声認識：停止中（読み上げのため）");
-    recognition.abort(); // ★修正ポイント: stop() → abort()（onendイベント抑止）
-
+    recognition.stop(); // 読み上げ前に確実に停止
     const res = await fetch('/gpt', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -94,7 +102,6 @@ document.addEventListener("keydown", async (event) => {
     const data = await res.json();
     const reply = data.reply;
 
-    // 読み上げ
     const utter = new SpeechSynthesisUtterance(reply);
     utter.lang = 'ja-JP';
     utter.rate = 1.3;
@@ -102,26 +109,18 @@ document.addEventListener("keydown", async (event) => {
     utter.volume = 1.0;
 
     utter.onend = () => {
-      console.log("🗣️ 読み上げ終了 → 100ms後に音声認識再開");
-      setTimeout(() => {
-        try {
-          recognition.start();  //再開はここだけ
-          statusEl.textContent = "待機中";
-        } catch (err) {
-          console.warn("⚠️ 認識スタート失敗:", err);
-        }
-      }, 100);  //0.1秒待ってから再開
+      statusEl.textContent = "待機中";
+      setTimeout(() => recognition.start(), 100);
     };
 
     utter.onerror = () => {
-      console.error("読み上げエラー");
-      setTimeout(() => recognition.start(), 100);
       statusEl.textContent = "エラー（読み上げ失敗）";
+      setTimeout(() => recognition.start(), 100);
     };
 
     speechSynthesis.speak(utter);
 
-    if (!(pair[0] === "フォロー" && pair[1] === "次の話題" && key === 'a')) {
+    if (!isFollowPhase || key === 'b') {
       currentStep++;
       ws.send(JSON.stringify({ action: "next", key }));
     }
